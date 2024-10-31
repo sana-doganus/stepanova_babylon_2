@@ -50,12 +50,21 @@ const buildKey = function (scene, parent, props) {
     }
 }
 
+const scaleFromPivot = function(transformNode, pivotPoint, scale) {
+    const _sx = scale / transformNode.scaling.x;
+    const _sy = scale / transformNode.scaling.y;
+    const _sz = scale / transformNode.scaling.z;
+    transformNode.scaling = new BABYLON.Vector3(_sx, _sy, _sz); 
+    transformNode.position = new BABYLON.Vector3(pivotPoint.x + _sx * (transformNode.position.x - pivotPoint.x), pivotPoint.y + _sy * (transformNode.position.y - pivotPoint.y), pivotPoint.z + _sz * (transformNode.position.z - pivotPoint.z));
+}
+
 const createScene = async function(engine) {
+    const scale = 0.015;
     const scene = new BABYLON.Scene(engine);
 
     const alpha =  3*Math.PI/2;
     const beta = Math.PI/50;
-    const radius = 220;
+    const radius = 220*scale;
     const target = new BABYLON.Vector3(0, 0, 0);
 
     const camera = new BABYLON.ArcRotateCamera("Camera", alpha, beta, radius, target, scene);
@@ -113,7 +122,56 @@ const createScene = async function(engine) {
     // Lift the piano keyboard
     keyboard.position.y += 80;
 
+    // Scale the entire piano
+    scaleFromPivot(piano, new BABYLON.Vector3(0, 0, 0), scale);
+
+    const pointerToKey = new Map()
+    const pianoSound = await Soundfont.instrument(new AudioContext(), 'acoustic_grand_piano');
+
+    scene.onPointerObservable.add((pointerInfo) => {
+        switch (pointerInfo.type) {
+            case BABYLON.PointerEventTypes.POINTERDOWN:
+                // Only take action if the pointer is down on a mesh
+                if(pointerInfo.pickInfo.hit) {
+                    let pickedMesh = pointerInfo.pickInfo.pickedMesh;
+                    let pointerId = pointerInfo.event.pointerId;
+                    if (pickedMesh.parent === keyboard) {
+                        pickedMesh.position.y -= 0.5; // Move the key downward
+                        pointerToKey.set(pointerId, {
+                            mesh: pickedMesh,
+                            note: pianoSound.play(pointerInfo.pickInfo.pickedMesh.name) // Play the sound of the note
+                        });
+                    }
+                }
+                break;
+            case BABYLON.PointerEventTypes.POINTERUP:
+                let pointerId = pointerInfo.event.pointerId;
+                // Only take action if the released pointer was recorded in pointerToKey
+                if (pointerToKey.has(pointerId)) {
+                    pointerToKey.get(pointerId).mesh.position.y += 0.5; // Move the key upward
+                    pointerToKey.get(pointerId).note.stop(); // Stop the sound of the note
+                    pointerToKey.delete(pointerId);
+                }
+                break;
+        }
+    });
+
     const xrHelper = await scene.createDefaultXRExperienceAsync();
+
+    const featuresManager = xrHelper.baseExperience.featuresManager;
+
+    featuresManager.enableFeature(BABYLON.WebXRFeatureName.POINTER_SELECTION, "stable", {
+        xrInput: xrHelper.input,
+        enablePointerSelectionOnAllControllers: true        
+    });
+
+    const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 400, height: 400});
+
+    featuresManager.enableFeature(BABYLON.WebXRFeatureName.TELEPORTATION, "stable", {
+        xrInput: xrHelper.input,
+        floorMeshes: [ground],
+        snapPositions: [new BABYLON.Vector3(2.4*3.5*scale, 0, -10*scale)],
+    });
 
     return scene;
 }
