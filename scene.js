@@ -64,7 +64,7 @@ const createScene = async function(engine) {
 
     const alpha =  3*Math.PI/2;
     const beta = Math.PI/50;
-    const radius = 150*scale; // 220
+    const radius = 130*scale; // 220
     const target = new BABYLON.Vector3(0, 0, 0);
 
     const camera = new BABYLON.ArcRotateCamera("Camera", alpha, beta, radius, target, scene);
